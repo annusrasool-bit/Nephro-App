@@ -1,1 +1,9 @@
-streamlitpandasxgboostscikit-learngspreadoauth2clientjoblibopenpyxl
+streamlit
+pandas
+xgboost
+scikit-learn
+gspread
+oauth2client
+joblib
+shap
+matplotlib
