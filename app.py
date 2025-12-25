@@ -60,8 +60,6 @@ with st.form("patient_form"):
     enceph = st.checkbox("Uremic Encephalopathy Present?")
     
     st.divider()
-    
-    # --- PRIVACY TOGGLE ---
     st.markdown("### 💾 Data Options")
     save_data = st.checkbox("Contribute this case to AI Training Database?", value=False)
     
@@ -73,17 +71,34 @@ with st.form("patient_form"):
 # ---------------------------------------------------------
 if submitted:
     if model:
-        # 1. Prepare Data
+        # 1. Create Dataframe with correct names
         input_data = pd.DataFrame({
-            'creatinine': [cr], 'delta_Cr_24h': [delta_cr], 'potassium': [k],
-            'bicarbonate': [bicarb], 'bun': [bun], 'ph_level': [ph],
-            'fluid_overload_grade': [fluid], 'uremic_encephalopathy': [1 if enceph else 0],
+            'creatinine': [cr], 
+            'delta_Cr_24h': [delta_cr], 
+            'potassium': [k],
+            'bicarbonate': [bicarb], 
+            'bun': [bun], 
+            'ph_level': [ph],
+            'fluid_overload_grade': [fluid], 
+            'uremic_encephalopathy': [1 if enceph else 0],
             'urine_output_24h': [uo]
         })
 
-        # 2. Predict (WITH FIX: Convert numpy float to python float)
+        # --- THE FIX: FORCE EXACT COLUMN ORDER ---
+        # We tell the dataframe to arrange columns exactly how the brain learned them
+        try:
+            input_data = input_data[model.feature_names_in_]
+        except AttributeError:
+            # If the model is old and doesn't store names, we skip reordering
+            pass
+        
+        # DEBUG: Show the doctor what the AI sees (Optional - helps you check)
+        with st.expander("Show Technical Debug Data"):
+            st.write("Sending this data to the Brain:", input_data)
+
+        # 2. Predict
         risk_prob_raw = model.predict_proba(input_data)[0][1]
-        risk_prob = float(risk_prob_raw)  # <--- THE FIX IS HERE
+        risk_prob = float(risk_prob_raw)
         
         # 3. Show Result
         st.divider()
@@ -96,10 +111,9 @@ if submitted:
         else:
             st.success("✅ LOW RISK: Conservative Management")
 
-        # 4. Save ONLY if the user asked for it
+        # 4. Save
         if save_data:
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # We explicitly convert everything to standard types to avoid JSON errors
             log_row = [
                 str(timestamp), float(cr), float(delta_cr), float(k), 
                 float(bicarb), float(bun), float(ph), int(fluid), 
