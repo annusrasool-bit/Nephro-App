@@ -4,6 +4,8 @@ import joblib
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import datetime
+import shap
+import matplotlib.pyplot as plt
 
 # ---------------------------------------------------------
 # 1. SETUP & CONFIGURATION
@@ -12,13 +14,13 @@ st.set_page_config(page_title="Nephro-AI CDSS", page_icon="🏥")
 
 # Load the Brain
 @st.cache_resource
-def load_model():
+def load_model_v3():
     try:
         return joblib.load('Nephro_Brain_Final.pkl')
     except:
         return None
 
-model = load_model()
+model = load_model_v3()
 
 # Database Function
 def add_to_database(data_row):
@@ -38,7 +40,7 @@ def add_to_database(data_row):
 # 2. THE INTERFACE
 # ---------------------------------------------------------
 st.title("🏥 Nephro-AI Assistant")
-st.caption("Clinical Decision Support System")
+st.caption("Clinical Decision Support System with Explainability")
 
 with st.form("patient_form"):
     st.subheader("Patient Vitals & Labs")
@@ -67,35 +69,24 @@ with st.form("patient_form"):
     submitted = st.form_submit_button("Run Analysis")
 
 # ---------------------------------------------------------
-# 3. LOGIC
+# 3. LOGIC & EXPLAINABILITY
 # ---------------------------------------------------------
 if submitted:
     if model:
-        # 1. Create Dataframe with correct names
+        # 1. Create Dataframe
         input_data = pd.DataFrame({
-            'creatinine': [cr], 
-            'delta_Cr_24h': [delta_cr], 
-            'potassium': [k],
-            'bicarbonate': [bicarb], 
-            'bun': [bun], 
-            'ph_level': [ph],
-            'fluid_overload_grade': [fluid], 
-            'uremic_encephalopathy': [1 if enceph else 0],
+            'creatinine': [cr], 'delta_Cr_24h': [delta_cr], 'potassium': [k],
+            'bicarbonate': [bicarb], 'bun': [bun], 'ph_level': [ph],
+            'fluid_overload_grade': [fluid], 'uremic_encephalopathy': [1 if enceph else 0],
             'urine_output_24h': [uo]
         })
 
-        # --- THE FIX: FORCE EXACT COLUMN ORDER ---
-        # We tell the dataframe to arrange columns exactly how the brain learned them
+        # Ensure column order matches the brain
         try:
             input_data = input_data[model.feature_names_in_]
-        except AttributeError:
-            # If the model is old and doesn't store names, we skip reordering
+        except:
             pass
         
-        # DEBUG: Show the doctor what the AI sees (Optional - helps you check)
-        with st.expander("Show Technical Debug Data"):
-            st.write("Sending this data to the Brain:", input_data)
-
         # 2. Predict
         risk_prob_raw = model.predict_proba(input_data)[0][1]
         risk_prob = float(risk_prob_raw)
@@ -111,7 +102,35 @@ if submitted:
         else:
             st.success("✅ LOW RISK: Conservative Management")
 
-        # 4. Save
+        # -----------------------------------------------------
+        # 4. AUTHENTICITY CHECK (SHAP GRAPH)
+        # -----------------------------------------------------
+        st.subheader("🧠 Why did the AI make this decision?")
+        st.caption("Red bars = Increased Risk | Blue bars = Decreased Risk")
+        
+        with st.spinner("Generating clinical reasoning trace..."):
+            try:
+                # Calculate SHAP values
+                explainer = shap.TreeExplainer(model)
+                shap_values = explainer.shap_values(input_data)
+                
+                # Create the plot
+                fig, ax = plt.subplots(figsize=(8, 5))
+                # Note: We use the first row [0] because we are predicting for 1 patient
+                shap.plots.waterfall(
+                    shap.Explanation(
+                        values=shap_values[0], 
+                        base_values=explainer.expected_value, 
+                        data=input_data.iloc[0],
+                        feature_names=input_data.columns
+                    ),
+                    show=False
+                )
+                st.pyplot(fig)
+            except Exception as e:
+                st.warning(f"Could not generate explanation graph: {e}")
+
+        # 5. Save to Cloud
         if save_data:
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             log_row = [
