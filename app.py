@@ -201,50 +201,30 @@ with st.expander("ℹ️ Evidence, Guidelines & Creator Info"):
     """)
 
 # ---------------------------------------------------------
-# 6. AI CONSULTANT (NEPHRO-GPT)
+# 6. AI CONSULTANT (DIAGNOSTIC VERSION)
 # ---------------------------------------------------------
 st.divider()
 st.subheader("🤖 Nephro-GPT: Management Assistant")
 
+# Check if analysis has run
 if 'risk_prob' in st.session_state:
-    risk_p = st.session_state['risk_prob']
-    ctx = st.session_state['patient_context']
-    
-    try:
-        if "GOOGLE_API_KEY" in st.secrets:
+    # DIAGNOSTIC CHECK
+    if "GOOGLE_API_KEY" in st.secrets:
+        st.success("✅ Success: The App detects your Google API Key.")
+        
+        # Now try to initialize the actual chat
+        try:
             genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
             model_ai = genai.GenerativeModel('gemini-1.5-flash')
-        else:
-            st.warning("⚠️ Chatbot disabled: Add 'GOOGLE_API_KEY' to Streamlit Secrets.")
-            model_ai = None
-    except:
-        model_ai = None
-
-    if "messages" not in st.session_state: st.session_state.messages = []
-
-    sbar_context = f"""
-    ACT AS A SENIOR NEPHROLOGIST.
-    PATIENT SBAR:
-    - Assessment: Cr {ctx['cr']}, K {ctx['k']}, pH {ctx['ph']}, Fluid {ctx['fluid']}, UO {ctx['uo']}
-    - Dialysis Risk: {risk_p:.1%}
-    - Task: Provide brief management steps based on KDIGO.
-    """
-
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]): st.markdown(message["content"])
-
-    if prompt := st.chat_input("Ask about management..."):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"): st.markdown(prompt)
-
-        if model_ai:
-            with st.chat_message("assistant"):
-                with st.spinner("Thinking..."):
-                    try:
-                        response = model_ai.generate_content(sbar_context + "\n\nUser: " + prompt)
-                        st.markdown(response.text)
-                        st.session_state.messages.append({"role": "assistant", "content": response.text})
-                    except Exception as e:
-                        st.error(f"AI Error: {e}")
+            
+            # (Keep the rest of your chat history and input code here)
+            if "messages" not in st.session_state: st.session_state.messages = []
+            # ... [Paste the SBAR and Chat logic from the previous version here] ...
+            
+        except Exception as e:
+            st.error(f"❌ API Key found, but connection failed: {e}")
+    else:
+        st.error("❌ Error: The App DOES NOT see 'GOOGLE_API_KEY' in Secrets.")
+        st.write("Current top-level keys in Secrets:", list(st.secrets.keys()))
 else:
-    st.info("👆 **Please run the analysis above** to activate the AI Consultant.")
+    st.info("👆 Please run the analysis above to activate the AI Consultant.")
