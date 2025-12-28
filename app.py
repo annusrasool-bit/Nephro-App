@@ -170,7 +170,7 @@ with st.expander("ℹ️ Evidence, Guidelines & Creator Info"):
     ---
     
     ### 👨‍⚕️ About the Creator
-    **Dr. [Annus Rasool]** *Nephrology Resident & AI Developer* to bridge the gap between static guidelines and complex, real-world decision making.
+    **Dr.Annus Rasoo** *Nephrology Resident & AI Developer* to bridge the gap between static guidelines and complex, real-world decision making.
     
     *Disclaimer: This tool is a Clinical Decision Support System (CDSS) for educational and assistive purposes only. It does not replace clinical judgment.*
     """)
