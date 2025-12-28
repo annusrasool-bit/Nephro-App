@@ -7,6 +7,7 @@ import datetime
 import shap
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
+import google.generativeai as genai
 
 # ---------------------------------------------------------
 # 1. SETUP & CONFIGURATION
@@ -34,7 +35,7 @@ def add_to_database(data_row):
         sheet.append_row(data_row)
         return True
     except Exception as e:
-        st.error(f"Database Error: {e}")
+        # Fail silently or log error
         return False
 
 # ---------------------------------------------------------
@@ -92,106 +93,15 @@ if submitted:
         risk_prob_raw = model.predict_proba(input_data)[0][1]
         risk_prob = float(risk_prob_raw)
         
-        # --- SAVE TO MEMORY (CRITICAL FIX) ---
+        # --- SAVE TO MEMORY (The Crash Fix) ---
         st.session_state['risk_prob'] = risk_prob
         st.session_state['patient_context'] = {
             'cr': cr, 'bun': bun, 'k': k, 'ph': ph,
-            'fluid': fluid, 'enceph': enceph, 'uo': uo
+            'fluid': fluid, 'enceph': enceph, 'uo': uo,
+            'input_data': input_data # Save dataframe for graphs
         }
-        # -------------------------------------
-
-        # --- LAYER 1: THE CLINICAL DASHBOARD ---
-        st.divider()
-        st.subheader("1. Clinical Assessment")
         
-        # (Rest of your Dashboard/Visuals code goes here - no changes needed to visuals)
-        # ... [Keep your Gauge and Charts code] ...
-        
-      # -----------------------------------------------------
-        # VISUAL 1: MINIMALIST RISK STRIP (BULLET CHART)
-        # -----------------------------------------------------
-        st.divider()
-        st.subheader("1. Clinical Assessment")
-        
-        # Determine color based on risk
-        if risk_prob > 0.75:
-            bar_color = "#FF4B4B" # Red
-        elif risk_prob > 0.40:
-            bar_color = "#FFD700" # Yellow
-        else:
-            bar_color = "#90EE90" # Green
-
-        fig_gauge = go.Figure(go.Indicator(
-            mode = "number+gauge",
-            value = risk_prob * 100,
-            number = {'suffix': "%", 'font': {'size': 30, 'family': "Arial"}},
-            title = {'text': "Dialysis Urgency", 'font': {'size': 18, 'color': "gray"}},
-            domain = {'x': [0, 1], 'y': [0, 1]},
-            gauge = {
-                'shape': "bullet",
-                'axis': {'range': [None, 100], 'visible': False}, # Hide ugly ticks
-                'bar': {'color': bar_color, 'thickness': 0.25},   # The patient's score
-                'bgcolor': "#E8E8E8",                             # Grey background track
-                'steps': [
-                    {'range': [0, 100], 'color': "#f0f2f6"}      # Subtle background
-                ],
-                # Add threshold markers for context (Low/Mod/High cutoffs)
-                'threshold': {
-                    'line': {'color': "gray", 'width': 2},
-                    'thickness': 0.75,
-                    'value': 75 # Mark the "High Risk" line
-                }
-            }
-        ))
-        
-        # Adjust height to be slim
-        fig_gauge.update_layout(height=120, margin=dict(l=20, r=20, t=30, b=20))
-        st.plotly_chart(fig_gauge, use_container_width=True)
-        
-        feature_importance = pd.DataFrame({
-            'feature': input_data.columns,
-            'importance': shap_values[0],
-            'value': input_data.iloc[0].values
-        })
-        feature_importance['abs_importance'] = feature_importance['importance'].abs()
-        top_factors = feature_importance.sort_values('abs_importance', ascending=False).head(3)
-        
-        reasoning_text = []
-        for index, row in top_factors.iterrows():
-            direction = "increased" if row['importance'] > 0 else "decreased"
-            reasoning_text.append(f"**{row['feature']} ({row['value']})** {direction} risk")
-            
-        st.info(f"💡 **AI Logic:** Decision primarily driven by: {', '.join(reasoning_text)}")
-
-        # --- LAYER 2: THE SCIENTIFIC DEEP DIVE (Collapsible) ---
-        # This keeps the dashboard clean, but holds the complex stats for review.
-        
-        with st.expander("🔬 View Advanced Statistical Analysis (SHAP)", expanded=False):
-            st.markdown("### Statistical Breakdown")
-            st.caption("This graph shows the exact mathematical contribution of every variable (Shapley Values).")
-            
-            # 1. Simplified Bar Chart (Easier to read)
-            pos_factors = feature_importance[feature_importance['importance'] > 0].sort_values('importance')
-            neg_factors = feature_importance[feature_importance['importance'] < 0].sort_values('importance')
-            
-            fig_bar = go.Figure()
-            fig_bar.add_trace(go.Bar(y=pos_factors['feature'], x=pos_factors['importance'], orientation='h', name='Risk Factors', marker_color='#FF4B4B'))
-            fig_bar.add_trace(go.Bar(y=neg_factors['feature'], x=neg_factors['importance'], orientation='h', name='Protective Factors', marker_color='#90EE90'))
-            fig_bar.update_layout(title="Risk Drivers (Red) vs Protective Factors (Green)", barmode='relative')
-            st.plotly_chart(fig_bar, use_container_width=True)
-            
-            # 2. The Original Waterfall Plot (For Authenticity)
-            st.markdown("---")
-            st.markdown("**Raw Waterfall Trace:**")
-            fig, ax = plt.subplots(figsize=(8, 5))
-            shap.plots.waterfall(
-                shap.Explanation(values=shap_values[0], base_values=explainer.expected_value, 
-                                data=input_data.iloc[0], feature_names=input_data.columns),
-                show=False
-            )
-            st.pyplot(fig)
-
-        # Save to Cloud
+        # Save to Cloud Database
         if save_data:
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             log_row = [
@@ -206,51 +116,122 @@ if submitted:
         st.error("⚠️ AI Brain (Model) not found. Check GitHub files.")
 
 # ---------------------------------------------------------
-# 4. FOOTER: GUIDELINES & REFERENCES
+# 4. DISPLAY RESULTS (FROM MEMORY)
+# ---------------------------------------------------------
+# We check session_state so results persist when chatting
+if 'risk_prob' in st.session_state:
+    risk_prob = st.session_state['risk_prob']
+    input_data = st.session_state['patient_context']['input_data']
+    
+    # --- VISUAL 1: MINIMALIST RISK STRIP (BULLET CHART) ---
+    st.divider()
+    st.subheader("1. Clinical Assessment")
+    
+    # Determine color
+    if risk_prob > 0.75:
+        bar_color = "#FF4B4B" # Red
+    elif risk_prob > 0.40:
+        bar_color = "#FFD700" # Yellow
+    else:
+        bar_color = "#90EE90" # Green
+
+    fig_gauge = go.Figure(go.Indicator(
+        mode = "number+gauge",
+        value = risk_prob * 100,
+        number = {'suffix': "%", 'font': {'size': 30, 'family': "Arial"}},
+        title = {'text': "Dialysis Urgency", 'font': {'size': 18, 'color': "gray"}},
+        domain = {'x': [0, 1], 'y': [0, 1]},
+        gauge = {
+            'shape': "bullet",
+            'axis': {'range': [None, 100], 'visible': False}, 
+            'bar': {'color': bar_color, 'thickness': 0.25},   
+            'bgcolor': "#E8E8E8",                             
+            'steps': [{'range': [0, 100], 'color': "#f0f2f6"}],
+            'threshold': {'line': {'color': "gray", 'width': 2}, 'thickness': 0.75, 'value': 75}
+        }
+    ))
+    fig_gauge.update_layout(height=120, margin=dict(l=20, r=20, t=30, b=20))
+    st.plotly_chart(fig_gauge, use_container_width=True)
+
+    # --- VISUAL 2: CONSULTANT NOTE ---
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(input_data)
+    
+    feature_importance = pd.DataFrame({
+        'feature': input_data.columns,
+        'importance': shap_values[0],
+        'value': input_data.iloc[0].values
+    })
+    feature_importance['abs_importance'] = feature_importance['importance'].abs()
+    top_factors = feature_importance.sort_values('abs_importance', ascending=False).head(3)
+    
+    reasoning_text = []
+    for index, row in top_factors.iterrows():
+        direction = "increased" if row['importance'] > 0 else "decreased"
+        reasoning_text.append(f"**{row['feature']} ({row['value']})** {direction} risk")
+        
+    st.info(f"💡 **AI Logic:** Decision primarily driven by: {', '.join(reasoning_text)}")
+
+    # --- VISUAL 3: ADVANCED STATS (EXPANDER) ---
+    with st.expander("🔬 View Advanced Statistical Analysis (SHAP)", expanded=False):
+        st.markdown("### Risk Drivers (Red) vs Protective Factors (Green)")
+        
+        pos_factors = feature_importance[feature_importance['importance'] > 0].sort_values('importance')
+        neg_factors = feature_importance[feature_importance['importance'] < 0].sort_values('importance')
+        
+        fig_bar = go.Figure()
+        fig_bar.add_trace(go.Bar(y=pos_factors['feature'], x=pos_factors['importance'], orientation='h', name='Risk', marker_color='#FF4B4B'))
+        fig_bar.add_trace(go.Bar(y=neg_factors['feature'], x=neg_factors['importance'], orientation='h', name='Protective', marker_color='#90EE90'))
+        fig_bar.update_layout(barmode='relative', height=400)
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+# ---------------------------------------------------------
+# 5. FOOTER: GUIDELINES & REFERENCES
 # ---------------------------------------------------------
 st.divider()
 with st.expander("ℹ️ Evidence, Guidelines & Creator Info"):
     st.markdown("""
     ### 🧠 How this AI Works
-    This tool utilizes a **Hybrid Clinical-AI Model** trained on 3,000 clinically validated scenarios...
-    *(Your references from the previous step go here)*
+    This tool utilizes a **Hybrid Clinical-AI Model** trained on 3,000 clinically validated scenarios. 
+    It operates on a "Safety First" hierarchical logic based on **KDIGO Emergency Criteria**.
+    
+    ### 📚 Key References
+    1.  **KDIGO 2012:** *Clinical Practice Guideline for Acute Kidney Injury*.
+    2.  **The IDEAL Study:** *Initiation of Dialysis Early and Late*. N Engl J Med 2010.
+    3.  **STARRT-AKI:** *Timing of Renal-Replacement Therapy*. N Engl J Med 2020.
+    
+    ### 👨‍⚕️ About the Creator
+    **Dr. [YOUR NAME HERE]** *Nephrology Resident & AI Developer*
+    *Disclaimer: This tool is a Clinical Decision Support System (CDSS) for educational purposes only.*
     """)
 
-
-
-import google.generativeai as genai # <--- Add this to your TOP imports
-
 # ---------------------------------------------------------
-# 5. AI CONSULTANT (NEPHRO-GPT)
+# 6. AI CONSULTANT (NEPHRO-GPT)
 # ---------------------------------------------------------
 st.divider()
 st.subheader("🤖 Nephro-GPT: Management Assistant")
 
-# Check if we have a patient in memory
 if 'risk_prob' in st.session_state:
-    # Get the saved data
+    # Retrieve context from memory
     risk_p = st.session_state['risk_prob']
     ctx = st.session_state['patient_context']
     
-    st.caption(f"Chatting about patient with Risk: {risk_p:.1%}")
-
-    # 1. Setup API
+    # 1. Setup API (Safe Check)
     try:
         if "GOOGLE_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
             model_ai = genai.GenerativeModel('gemini-1.5-flash')
         else:
-            st.error("⚠️ Google API Key missing. Please add it to Secrets.")
+            st.warning("⚠️ Chatbot disabled: Add 'GOOGLE_API_KEY' to Streamlit Secrets.")
             model_ai = None
-    except Exception as e:
-        st.error(f"API Error: {e}")
+    except:
         model_ai = None
 
-    # 2. Initialize Chat History
+    # 2. Chat History
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # 3. Create the SBAR Context
+    # 3. SBAR Prompt
     sbar_context = f"""
     ACT AS A SENIOR NEPHROLOGIST.
     PATIENT SBAR:
@@ -261,15 +242,15 @@ if 'risk_prob' in st.session_state:
       - Fluid Grade: {ctx['fluid']}, Encephalopathy: {ctx['enceph']}
       - Urine Output: {ctx['uo']}ml/24h
       - Calculated Dialysis Probability: {risk_p:.1%}
-    - Recommendation: Guide management based on KDIGO guidelines.
+    - Recommendation: Provide brief, bulleted management steps based on KDIGO guidelines.
     """
 
-    # 4. Display Chat Interface
+    # 4. Show Chat
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # 5. Handle User Input
+    # 5. Handle Input
     if prompt := st.chat_input("Ask about management (e.g., 'Dose of Lasix?')..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
@@ -285,6 +266,5 @@ if 'risk_prob' in st.session_state:
                         st.session_state.messages.append({"role": "assistant", "content": response.text})
                     except Exception as e:
                         st.error(f"AI Error: {e}")
-
 else:
     st.info("👆 **Please run the analysis above** to activate the AI Consultant.")
