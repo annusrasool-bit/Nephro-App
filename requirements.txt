@@ -8,3 +8,4 @@ joblib
 shap
 matplotlib
 plotly
+google-generativeai
