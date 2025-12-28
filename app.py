@@ -204,3 +204,72 @@ with st.expander("ℹ️ Evidence, Guidelines & Creator Info"):
     This tool utilizes a **Hybrid Clinical-AI Model** trained on 3,000 clinically validated scenarios...
     *(Your references from the previous step go here)*
     """)
+
+
+
+import google.generativeai as genai # <--- Add this to your TOP imports
+
+# ... (All your previous code) ...
+
+# ---------------------------------------------------------
+# 5. AI CONSULTANT (NEPHRO-GPT)
+# ---------------------------------------------------------
+st.divider()
+st.subheader("🤖 Nephro-GPT: Management Assistant")
+st.caption("Chat with the AI about this specific patient's management plan.")
+
+# 1. Setup API
+try:
+    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+    model_ai = genai.GenerativeModel('gemini-1.5-flash') # Fast & Clinical
+except:
+    st.error("⚠️ Google API Key missing in Secrets.")
+    model_ai = None
+
+# 2. Initialize Chat History
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# 3. Create the SBAR Context (The "Memory")
+# We construct a prompt that forces the AI to act like a Nephrologist
+sbar_context = f"""
+ACT AS A SENIOR NEPHROLOGIST.
+PATIENT SBAR:
+- Situation: Patient requires risk assessment for dialysis.
+- Background: Current Creatinine {cr}, BUN {bun}.
+- Assessment:
+  - Potassium: {k}
+  - pH: {ph}
+  - Fluid Overload Grade: {fluid}
+  - Encephalopathy: {'Yes' if enceph else 'No'}
+  - Urine Output: {uo}ml/24h
+  - Calculated Dialysis Probability: {risk_prob:.1%}
+- Recommendation: Guide management based on KDIGO guidelines.
+"""
+
+# 4. Display Chat Interface
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# 5. Handle User Input
+if prompt := st.chat_input("Ask about management (e.g., 'Dose of Lasix?', 'Treating Hyperkalemia?')..."):
+    # Add user message to history
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    # Generate AI Response
+    if model_ai:
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                # We send the SBAR + Chat History to the AI
+                full_prompt = sbar_context + "\n\nUser Question: " + prompt
+                try:
+                    response = model_ai.generate_content(full_prompt)
+                    ai_reply = response.text
+                    st.markdown(ai_reply)
+                    # Add AI reply to history
+                    st.session_state.messages.append({"role": "assistant", "content": ai_reply})
+                except Exception as e:
+                    st.error(f"AI Error: {e}")
