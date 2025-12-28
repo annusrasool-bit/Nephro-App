@@ -92,9 +92,20 @@ if submitted:
         risk_prob_raw = model.predict_proba(input_data)[0][1]
         risk_prob = float(risk_prob_raw)
         
-        # --- LAYER 1: THE CLINICAL DASHBOARD (Simple & Fast) ---
+        # --- SAVE TO MEMORY (CRITICAL FIX) ---
+        st.session_state['risk_prob'] = risk_prob
+        st.session_state['patient_context'] = {
+            'cr': cr, 'bun': bun, 'k': k, 'ph': ph,
+            'fluid': fluid, 'enceph': enceph, 'uo': uo
+        }
+        # -------------------------------------
+
+        # --- LAYER 1: THE CLINICAL DASHBOARD ---
         st.divider()
         st.subheader("1. Clinical Assessment")
+        
+        # (Rest of your Dashboard/Visuals code goes here - no changes needed to visuals)
+        # ... [Keep your Gauge and Charts code] ...
         
       # -----------------------------------------------------
         # VISUAL 1: MINIMALIST RISK STRIP (BULLET CHART)
@@ -209,67 +220,71 @@ with st.expander("ℹ️ Evidence, Guidelines & Creator Info"):
 
 import google.generativeai as genai # <--- Add this to your TOP imports
 
-# ... (All your previous code) ...
-
 # ---------------------------------------------------------
 # 5. AI CONSULTANT (NEPHRO-GPT)
 # ---------------------------------------------------------
 st.divider()
 st.subheader("🤖 Nephro-GPT: Management Assistant")
-st.caption("Chat with the AI about this specific patient's management plan.")
 
-# 1. Setup API
-try:
-    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-    model_ai = genai.GenerativeModel('gemini-1.5-flash') # Fast & Clinical
-except:
-    st.error("⚠️ Google API Key missing in Secrets.")
-    model_ai = None
+# Check if we have a patient in memory
+if 'risk_prob' in st.session_state:
+    # Get the saved data
+    risk_p = st.session_state['risk_prob']
+    ctx = st.session_state['patient_context']
+    
+    st.caption(f"Chatting about patient with Risk: {risk_p:.1%}")
 
-# 2. Initialize Chat History
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+    # 1. Setup API
+    try:
+        if "GOOGLE_API_KEY" in st.secrets:
+            genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+            model_ai = genai.GenerativeModel('gemini-1.5-flash')
+        else:
+            st.error("⚠️ Google API Key missing. Please add it to Secrets.")
+            model_ai = None
+    except Exception as e:
+        st.error(f"API Error: {e}")
+        model_ai = None
 
-# 3. Create the SBAR Context (The "Memory")
-# We construct a prompt that forces the AI to act like a Nephrologist
-sbar_context = f"""
-ACT AS A SENIOR NEPHROLOGIST.
-PATIENT SBAR:
-- Situation: Patient requires risk assessment for dialysis.
-- Background: Current Creatinine {cr}, BUN {bun}.
-- Assessment:
-  - Potassium: {k}
-  - pH: {ph}
-  - Fluid Overload Grade: {fluid}
-  - Encephalopathy: {'Yes' if enceph else 'No'}
-  - Urine Output: {uo}ml/24h
-  - Calculated Dialysis Probability: {risk_prob:.1%}
-- Recommendation: Guide management based on KDIGO guidelines.
-"""
+    # 2. Initialize Chat History
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
-# 4. Display Chat Interface
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    # 3. Create the SBAR Context
+    sbar_context = f"""
+    ACT AS A SENIOR NEPHROLOGIST.
+    PATIENT SBAR:
+    - Situation: Patient requires risk assessment for dialysis.
+    - Assessment:
+      - Creatinine: {ctx['cr']}, BUN: {ctx['bun']}
+      - Potassium: {ctx['k']}, pH: {ctx['ph']}
+      - Fluid Grade: {ctx['fluid']}, Encephalopathy: {ctx['enceph']}
+      - Urine Output: {ctx['uo']}ml/24h
+      - Calculated Dialysis Probability: {risk_p:.1%}
+    - Recommendation: Guide management based on KDIGO guidelines.
+    """
 
-# 5. Handle User Input
-if prompt := st.chat_input("Ask about management (e.g., 'Dose of Lasix?', 'Treating Hyperkalemia?')..."):
-    # Add user message to history
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+    # 4. Display Chat Interface
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
-    # Generate AI Response
-    if model_ai:
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                # We send the SBAR + Chat History to the AI
-                full_prompt = sbar_context + "\n\nUser Question: " + prompt
-                try:
-                    response = model_ai.generate_content(full_prompt)
-                    ai_reply = response.text
-                    st.markdown(ai_reply)
-                    # Add AI reply to history
-                    st.session_state.messages.append({"role": "assistant", "content": ai_reply})
-                except Exception as e:
-                    st.error(f"AI Error: {e}")
+    # 5. Handle User Input
+    if prompt := st.chat_input("Ask about management (e.g., 'Dose of Lasix?')..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        if model_ai:
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    full_prompt = sbar_context + "\n\nUser Question: " + prompt
+                    try:
+                        response = model_ai.generate_content(full_prompt)
+                        st.markdown(response.text)
+                        st.session_state.messages.append({"role": "assistant", "content": response.text})
+                    except Exception as e:
+                        st.error(f"AI Error: {e}")
+
+else:
+    st.info("👆 **Please run the analysis above** to activate the AI Consultant.")
