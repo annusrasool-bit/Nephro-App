@@ -35,7 +35,6 @@ def add_to_database(data_row):
         sheet.append_row(data_row)
         return True
     except Exception as e:
-        # Fail silently or log error
         return False
 
 # ---------------------------------------------------------
@@ -67,7 +66,6 @@ with st.form("patient_form"):
     st.markdown("### 💾 Data Options")
     save_data = st.checkbox("Contribute this case to AI Training Database?", value=False)
     
-    # Submission Button
     submitted = st.form_submit_button("Run Analysis")
 
 # ---------------------------------------------------------
@@ -83,7 +81,6 @@ if submitted:
             'urine_output_24h': [uo]
         })
         
-        # Align columns
         try:
             input_data = input_data[model.feature_names_in_]
         except:
@@ -93,47 +90,38 @@ if submitted:
         risk_prob_raw = model.predict_proba(input_data)[0][1]
         risk_prob = float(risk_prob_raw)
         
-        # --- SAVE TO MEMORY (The Crash Fix) ---
+        # --- SAVE TO MEMORY ---
         st.session_state['risk_prob'] = risk_prob
         st.session_state['patient_context'] = {
             'cr': cr, 'bun': bun, 'k': k, 'ph': ph,
             'fluid': fluid, 'enceph': enceph, 'uo': uo,
-            'input_data': input_data # Save dataframe for graphs
+            'input_data': input_data
         }
         
-        # Save to Cloud Database
         if save_data:
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            log_row = [
-                str(timestamp), float(cr), float(delta_cr), float(k), 
-                float(bicarb), float(bun), float(ph), int(fluid), 
-                int(enceph), float(uo), round(risk_prob, 3)
-            ]
+            log_row = [str(timestamp), float(cr), float(delta_cr), float(k), float(bicarb), float(bun), float(ph), int(fluid), int(enceph), float(uo), round(risk_prob, 3)]
             if add_to_database(log_row):
                 st.toast("✅ Saved for training!", icon="🧬")
 
     else:
-        st.error("⚠️ AI Brain (Model) not found. Check GitHub files.")
+        st.error("⚠️ AI Brain (Model) not found.")
 
 # ---------------------------------------------------------
-# 4. DISPLAY RESULTS (FROM MEMORY)
+# 4. DISPLAY RESULTS (PERSISTENT)
 # ---------------------------------------------------------
-# We check session_state so results persist when chatting
 if 'risk_prob' in st.session_state:
     risk_prob = st.session_state['risk_prob']
     input_data = st.session_state['patient_context']['input_data']
     
-    # --- VISUAL 1: MINIMALIST RISK STRIP (BULLET CHART) ---
     st.divider()
     st.subheader("1. Clinical Assessment")
-    
+
+    # --- VISUAL 1: MINIMALIST BULLET CHART ---
     # Determine color
-    if risk_prob > 0.75:
-        bar_color = "#FF4B4B" # Red
-    elif risk_prob > 0.40:
-        bar_color = "#FFD700" # Yellow
-    else:
-        bar_color = "#90EE90" # Green
+    if risk_prob > 0.75: bar_color = "#FF4B4B" # Red
+    elif risk_prob > 0.40: bar_color = "#FFD700" # Yellow
+    else: bar_color = "#90EE90" # Green
 
     fig_gauge = go.Figure(go.Indicator(
         mode = "number+gauge",
@@ -172,18 +160,27 @@ if 'risk_prob' in st.session_state:
         
     st.info(f"💡 **AI Logic:** Decision primarily driven by: {', '.join(reasoning_text)}")
 
-    # --- VISUAL 3: ADVANCED STATS (EXPANDER) ---
-    with st.expander("🔬 View Advanced Statistical Analysis (SHAP)", expanded=False):
-        st.markdown("### Risk Drivers (Red) vs Protective Factors (Green)")
-        
-        pos_factors = feature_importance[feature_importance['importance'] > 0].sort_values('importance')
-        neg_factors = feature_importance[feature_importance['importance'] < 0].sort_values('importance')
-        
-        fig_bar = go.Figure()
-        fig_bar.add_trace(go.Bar(y=pos_factors['feature'], x=pos_factors['importance'], orientation='h', name='Risk', marker_color='#FF4B4B'))
-        fig_bar.add_trace(go.Bar(y=neg_factors['feature'], x=neg_factors['importance'], orientation='h', name='Protective', marker_color='#90EE90'))
-        fig_bar.update_layout(barmode='relative', height=400)
-        st.plotly_chart(fig_bar, use_container_width=True)
+    # --- VISUAL 3: RISK BAR CHART (VISIBLE) ---
+    st.subheader("2. Risk Factor Breakdown")
+    pos_factors = feature_importance[feature_importance['importance'] > 0].sort_values('importance')
+    neg_factors = feature_importance[feature_importance['importance'] < 0].sort_values('importance')
+    
+    fig_bar = go.Figure()
+    fig_bar.add_trace(go.Bar(y=pos_factors['feature'], x=pos_factors['importance'], orientation='h', name='Risk', marker_color='#FF4B4B'))
+    fig_bar.add_trace(go.Bar(y=neg_factors['feature'], x=neg_factors['importance'], orientation='h', name='Protective', marker_color='#90EE90'))
+    fig_bar.update_layout(barmode='relative', height=300, margin=dict(l=0, r=0, t=20, b=20))
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+    # --- VISUAL 4: ADVANCED MATH (HIDDEN) ---
+    with st.expander("🔬 View Raw Statistical Waterfall (Complex)", expanded=False):
+        st.markdown("**Raw SHAP Trace:**")
+        fig, ax = plt.subplots(figsize=(8, 5))
+        shap.plots.waterfall(
+            shap.Explanation(values=shap_values[0], base_values=explainer.expected_value, 
+                            data=input_data.iloc[0], feature_names=input_data.columns),
+            show=False
+        )
+        st.pyplot(fig)
 
 # ---------------------------------------------------------
 # 5. FOOTER: GUIDELINES & REFERENCES
@@ -192,16 +189,14 @@ st.divider()
 with st.expander("ℹ️ Evidence, Guidelines & Creator Info"):
     st.markdown("""
     ### 🧠 How this AI Works
-    This tool utilizes a **Hybrid Clinical-AI Model** trained on 3,000 clinically validated scenarios. 
-    It operates on a "Safety First" hierarchical logic based on **KDIGO Emergency Criteria**.
+    This tool utilizes a **Hybrid Clinical-AI Model** trained on 3,000 clinically validated scenarios based on **KDIGO Emergency Criteria**.
     
     ### 📚 Key References
     1.  **KDIGO 2012:** *Clinical Practice Guideline for Acute Kidney Injury*.
     2.  **The IDEAL Study:** *Initiation of Dialysis Early and Late*. N Engl J Med 2010.
-    3.  **STARRT-AKI:** *Timing of Renal-Replacement Therapy*. N Engl J Med 2020.
     
     ### 👨‍⚕️ About the Creator
-    **Dr. [YOUR NAME HERE]** *Nephrology Resident & AI Developer*
+    **Dr. Annus Rasool ** *Nephrology Resident & AI Developer* <-- UPDATE THIS!
     *Disclaimer: This tool is a Clinical Decision Support System (CDSS) for educational purposes only.*
     """)
 
@@ -212,11 +207,9 @@ st.divider()
 st.subheader("🤖 Nephro-GPT: Management Assistant")
 
 if 'risk_prob' in st.session_state:
-    # Retrieve context from memory
     risk_p = st.session_state['risk_prob']
     ctx = st.session_state['patient_context']
     
-    # 1. Setup API (Safe Check)
     try:
         if "GOOGLE_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
@@ -227,41 +220,28 @@ if 'risk_prob' in st.session_state:
     except:
         model_ai = None
 
-    # 2. Chat History
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+    if "messages" not in st.session_state: st.session_state.messages = []
 
-    # 3. SBAR Prompt
     sbar_context = f"""
     ACT AS A SENIOR NEPHROLOGIST.
     PATIENT SBAR:
-    - Situation: Patient requires risk assessment for dialysis.
-    - Assessment:
-      - Creatinine: {ctx['cr']}, BUN: {ctx['bun']}
-      - Potassium: {ctx['k']}, pH: {ctx['ph']}
-      - Fluid Grade: {ctx['fluid']}, Encephalopathy: {ctx['enceph']}
-      - Urine Output: {ctx['uo']}ml/24h
-      - Calculated Dialysis Probability: {risk_p:.1%}
-    - Recommendation: Provide brief, bulleted management steps based on KDIGO guidelines.
+    - Assessment: Cr {ctx['cr']}, K {ctx['k']}, pH {ctx['ph']}, Fluid {ctx['fluid']}, UO {ctx['uo']}
+    - Dialysis Risk: {risk_p:.1%}
+    - Task: Provide brief management steps based on KDIGO.
     """
 
-    # 4. Show Chat
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+        with st.chat_message(message["role"]): st.markdown(message["content"])
 
-    # 5. Handle Input
-    if prompt := st.chat_input("Ask about management (e.g., 'Dose of Lasix?')..."):
+    if prompt := st.chat_input("Ask about management..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        with st.chat_message("user"): st.markdown(prompt)
 
         if model_ai:
             with st.chat_message("assistant"):
                 with st.spinner("Thinking..."):
-                    full_prompt = sbar_context + "\n\nUser Question: " + prompt
                     try:
-                        response = model_ai.generate_content(full_prompt)
+                        response = model_ai.generate_content(sbar_context + "\n\nUser: " + prompt)
                         st.markdown(response.text)
                         st.session_state.messages.append({"role": "assistant", "content": response.text})
                     except Exception as e:
