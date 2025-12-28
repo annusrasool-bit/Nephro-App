@@ -96,28 +96,46 @@ if submitted:
         st.divider()
         st.subheader("1. Clinical Assessment")
         
-        # A. Speedometer Gauge
+      # -----------------------------------------------------
+        # VISUAL 1: MINIMALIST RISK STRIP (BULLET CHART)
+        # -----------------------------------------------------
+        st.divider()
+        st.subheader("1. Clinical Assessment")
+        
+        # Determine color based on risk
+        if risk_prob > 0.75:
+            bar_color = "#FF4B4B" # Red
+        elif risk_prob > 0.40:
+            bar_color = "#FFD700" # Yellow
+        else:
+            bar_color = "#90EE90" # Green
+
         fig_gauge = go.Figure(go.Indicator(
-            mode = "gauge+number",
+            mode = "number+gauge",
             value = risk_prob * 100,
+            number = {'suffix': "%", 'font': {'size': 30, 'family': "Arial"}},
+            title = {'text': "Dialysis Urgency", 'font': {'size': 18, 'color': "gray"}},
             domain = {'x': [0, 1], 'y': [0, 1]},
-            title = {'text': "Dialysis Urgency (%)"},
             gauge = {
-                'axis': {'range': [None, 100]},
-                'bar': {'color': "black"},
+                'shape': "bullet",
+                'axis': {'range': [None, 100], 'visible': False}, # Hide ugly ticks
+                'bar': {'color': bar_color, 'thickness': 0.25},   # The patient's score
+                'bgcolor': "#E8E8E8",                             # Grey background track
                 'steps': [
-                    {'range': [0, 40], 'color': "#90EE90"},
-                    {'range': [40, 75], 'color': "#FFD700"},
-                    {'range': [75, 100], 'color': "#FF4B4B"}
+                    {'range': [0, 100], 'color': "#f0f2f6"}      # Subtle background
                 ],
-                'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 75}
+                # Add threshold markers for context (Low/Mod/High cutoffs)
+                'threshold': {
+                    'line': {'color': "gray", 'width': 2},
+                    'thickness': 0.75,
+                    'value': 75 # Mark the "High Risk" line
+                }
             }
         ))
+        
+        # Adjust height to be slim
+        fig_gauge.update_layout(height=120, margin=dict(l=20, r=20, t=30, b=20))
         st.plotly_chart(fig_gauge, use_container_width=True)
-
-        # B. Text Explanation (Consultant Note)
-        explainer = shap.TreeExplainer(model)
-        shap_values = explainer.shap_values(input_data)
         
         feature_importance = pd.DataFrame({
             'feature': input_data.columns,
