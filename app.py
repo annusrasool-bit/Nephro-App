@@ -144,3 +144,33 @@ if submitted:
                     st.toast("✅ Saved for training!", icon="🧬")
     else:
         st.error("⚠️ AI Brain (Model) not found. Check GitHub files.")
+
+
+# ---------------------------------------------------------
+# 6. FOOTER: GUIDELINES, REFERENCES & CREATOR
+# ---------------------------------------------------------
+st.divider()
+
+with st.expander("ℹ️ Evidence, Guidelines & Creator Info"):
+    st.markdown("""
+    ### 🧠 How this AI Works
+    This tool utilizes a **Hybrid Clinical-AI Model** trained on 3,000 clinically validated scenarios. It operates on a "Safety First" hierarchical logic:
+    
+    * **Zone 1 (Absolute Indications):** Immediate high-risk alert for **KDIGO Emergency Criteria** (e.g., Refractory Hyperkalemia $K^+ > 6.5$, Severe Acidosis $pH < 7.15$, Uremic Complications).
+    * **Zone 2 (Synergistic Risk):** Detects "Toxic Combinations" (e.g., Moderate Acidosis + Moderate Hyperkalemia) that magnify mortality risk.
+    * **Zone 3 (Velocity):** Weights rapid creatinine rise ($\Delta Cr$) significantly higher than static chronic elevation.
+    
+    ---
+    
+    ### 📚 Key References
+    1.  **KDIGO 2012:** *Clinical Practice Guideline for Acute Kidney Injury*. (Defines Stage 3 AKI and RRT initiation criteria).
+    2.  **The IDEAL Study:** *Initiation of Dialysis Early and Late*. N Engl J Med 2010.
+    3.  **STARRT-AKI:** *Timing of Renal-Replacement Therapy in Patients with Acute Kidney Injury*. N Engl J Med 2020.
+    
+    ---
+    
+    ### 👨‍⚕️ About the Creator
+    **Dr. [Annus Rasool]** *Nephrology Resident & AI Developer* to bridge the gap between static guidelines and complex, real-world decision making.
+    
+    *Disclaimer: This tool is a Clinical Decision Support System (CDSS) for educational and assistive purposes only. It does not replace clinical judgment.*
+    """)
