@@ -96,13 +96,17 @@ if submitted:
         # 2. Predict Probability
         risk_prob = float(model.predict_proba(input_data)[0][1])
         st.session_state['risk_prob'] = risk_prob
-        st.session_state['patient_context'] = {'cr': cr, 'k': k, 'ph': ph, 'uo': uo, 'input_data': input_data}
         
-        # 3. Save to Google Sheets (Updated with MR Number)
+        # --- FIXED: Added 'fluid' and 'enceph' to memory so Chatbot can read them ---
+        st.session_state['patient_context'] = {
+            'cr': cr, 'k': k, 'ph': ph, 'uo': uo, 
+            'fluid': fluid, 'enceph': enceph, 'bun': bun, # <--- The Missing Keys!
+            'input_data': input_data
+        }
+        
+        # 3. Save to Google Sheets
         if save_data:
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            # --- UPDATED LOG ROW ---
             log_row = [
                 str(mr_number),  # Column 1: MR Number
                 str(timestamp),  # Column 2: Time
@@ -111,10 +115,9 @@ if submitted:
                 int(fluid), int(enceph), float(uo), 
                 round(risk_prob, 3)
             ]
-            # -----------------------
 
             if add_to_database(log_row):
-                st.toast(f"✅ Data for MR: {mr_number} saved!", icon="💾")
+                st.toast(f"✅ Patient {mr_number} saved!", icon="💾")
             else:
                 st.error("❌ Database Error: Check Google Sheet Connection")
     else:
