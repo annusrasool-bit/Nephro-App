@@ -245,7 +245,51 @@ if 'risk_prob' in st.session_state:
                             data=input_data.iloc[0], feature_names=input_data.columns),
             show=False
         )
-        st.pyplot(fig)
+        st.pyplot(fig) # ---------------------------------------------------------
+        # 5. DYNAMIC CLINICAL INTERPRETATION (VERBAL SUMMARY)
+        # ---------------------------------------------------------
+        st.divider()
+        st.markdown("### 🗣️ Verbalized Analysis")
+        
+        # 1. Sort factors into "Hurting" (Positive) and "Helping" (Negative)
+        # We assume 'feature_importance' dataframe was created in the visual sections above. 
+        # If not, we recreate it briefly here to be safe:
+        feature_importance = pd.DataFrame({
+            'feature': input_data.columns,
+            'importance': shap_values[0],
+            'value': input_data.iloc[0].values
+        })
+        
+        pos_drivers = feature_importance[feature_importance['importance'] > 0].sort_values('importance', ascending=False).head(2)
+        neg_drivers = feature_importance[feature_importance['importance'] < 0].sort_values('importance', ascending=True).head(2)
+        
+        # 2. Helper to format text (e.g., "Potassium (6.5)")
+        def fmt(row): return f"**{row['feature']}** is {row['value']}"
+        
+        # 3. Build the Sentence
+        if risk_prob < 0.50:
+            # SCENARIO: LOW RISK (Holding Off)
+            if not pos_drivers.empty:
+                bad_factors = " and ".join([fmt(row) for _, row in pos_drivers.iterrows()])
+                opening = f"Although {bad_factors}, "
+            else:
+                opening = "With no major risk factors present, "
+            
+            good_factors = " and ".join([fmt(row) for _, row in neg_drivers.iterrows()])
+            summary = f"{opening}the AI recommends **holding off on dialysis**. This is primarily because {good_factors}, which provides a protective stability."
+            st.success(f"🛡️ **Interpretation:** {summary}")
+
+        else:
+            # SCENARIO: HIGH RISK (Initiate)
+            bad_factors = " and ".join([fmt(row) for _, row in pos_drivers.iterrows()])
+            if not neg_drivers.empty:
+                good_factors = " and ".join([fmt(row) for _, row in neg_drivers.iterrows()])
+                ending = f"Despite {good_factors}, the risk remains critical."
+            else:
+                ending = "There are no significant protective factors buffering this risk."
+                
+            summary = f"The AI recommends **urgent consideration for dialysis**. This is driven primarily because {bad_factors}. {ending}"
+            st.error(f"🚨 **Interpretation:** {summary}")
 
 # ---------------------------------------------------------
 # 5. FOOTER: GUIDELINES & REFERENCES
