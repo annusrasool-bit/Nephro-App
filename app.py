@@ -48,6 +48,7 @@ st.title("🏥 Nephro-AI Assistant")
 st.caption("Clinical Decision Support System with Explainability")
 
 with st.form("patient_form"):
+    mr_number = st.text_input("Patient MR Number", help="Enter Hospital ID")
     st.subheader("Patient Vitals & Labs")
     
     col1, col2 = st.columns(2)
@@ -159,9 +160,12 @@ if submitted:
         if save_data:
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             log_row = [
-                str(timestamp), float(cr), float(delta_cr), float(k), 
-                float(bicarb), float(bun), float(ph), int(fluid), 
-                int(enceph), float(uo), round(risk_prob, 3)
+                str(mr_number),  # New Column 1
+                str(timestamp),  # Column 2
+                float(cr), float(delta_cr), float(k), 
+                float(bicarb), float(bun), float(ph), 
+                int(fluid), int(enceph), float(uo), 
+                round(risk_prob, 3)
             ]
             if add_to_database(log_row):
                 st.toast("✅ Saved for training!", icon="🧬")
