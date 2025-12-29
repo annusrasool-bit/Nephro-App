@@ -93,38 +93,30 @@ if submitted:
             'urine_output_24h': [uo]
         })
         
-        # Align columns
-        try:
-            input_data = input_data[model.feature_names_in_]
-        except:
-            pass
-        
         # 2. Predict Probability
-        risk_prob_raw = model.predict_proba(input_data)[0][1]
-        risk_prob = float(risk_prob_raw)
-        
-        # 3. SAVE TO MEMORY (Critical for Chatbot stability)
+        risk_prob = float(model.predict_proba(input_data)[0][1])
         st.session_state['risk_prob'] = risk_prob
-        st.session_state['patient_context'] = {
-            'cr': cr, 'bun': bun, 'k': k, 'ph': ph,
-            'fluid': fluid, 'enceph': enceph, 'uo': uo,
-            'input_data': input_data # Save dataframe for graphs
-        }
+        st.session_state['patient_context'] = {'cr': cr, 'k': k, 'ph': ph, 'uo': uo, 'input_data': input_data}
         
-        # 4. Save to Cloud Database
+        # 3. Save to Google Sheets (Updated with MR Number)
         if save_data:
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # --- UPDATED LOG ROW ---
             log_row = [
-                str(mr_number),  # New Column 1
-                str(timestamp),  # Column 2
+                str(mr_number),  # Column 1: MR Number
+                str(timestamp),  # Column 2: Time
                 float(cr), float(delta_cr), float(k), 
                 float(bicarb), float(bun), float(ph), 
                 int(fluid), int(enceph), float(uo), 
                 round(risk_prob, 3)
             ]
-            if add_to_database(log_row):
-                st.toast("✅ Saved for training!", icon="🧬")
+            # -----------------------
 
+            if add_to_database(log_row):
+                st.toast(f"✅ Data for MR: {mr_number} saved!", icon="💾")
+            else:
+                st.error("❌ Database Error: Check Google Sheet Connection")
     else:
         st.error("⚠️ AI Brain (Model) not found. Check GitHub files.")
 
