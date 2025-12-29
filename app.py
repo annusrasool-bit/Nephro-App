@@ -248,7 +248,7 @@ if 'risk_prob' in st.session_state:
             st.pyplot(fig)  # ---------------------------------------------------------
                 # 5. DYNAMIC CLINICAL INTERPRETATION (VERBAL SUMMARY)
                 # ---------------------------------------------------------
-                st.divider()
+            st.divider()
                 st.markdown("### 🗣️ Verbalized Analysis")
                 
                 # 1. Sort factors into "Hurting" (Positive) and "Helping" (Negative)
