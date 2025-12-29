@@ -42,87 +42,42 @@ def add_to_database(data_row):
         return False
 
 # ---------------------------------------------------------
-# 2. THE INTERFACE (With Clinical Tooltips)
+# 2. THE INTERFACE
 # ---------------------------------------------------------
 st.title("🏥 Nephro-AI Assistant")
-st.caption("Clinical Decision Support System with Explainability")
+st.caption("Clinical Decision Support System with SHAP Explainability")
 
 with st.form("patient_form"):
-    mr_number = st.text_input("Patient MR Number", help="Enter Hospital ID")
+    
+    # --- NEW: MR NUMBER SECTION ---
+    st.markdown("### 🆔 Patient Identification")
+    mr_number = st.text_input(
+        "MR Number / Patient ID", 
+        placeholder="Type Hospital ID here...",
+        help="Enter the unique Medical Record Number for this patient."
+    )
+    # ------------------------------
+
+    st.divider()
     st.subheader("Patient Vitals & Labs")
     
     col1, col2 = st.columns(2)
     with col1:
-        # Creatinine
-        cr = st.number_input(
-            "Creatinine (mg/dL)", 
-            min_value=0.0, value=2.0, step=0.1,
-            help="Current serum creatinine. \n\nReference: 0.7 - 1.3 mg/dL. \nValues > 4.0 often indicate severe renal failure."
-        )
-        
-        # Delta Cr (24h)
-        delta_cr = st.number_input(
-            "Delta Cr (24h change)", 
-            value=0.0, step=0.1,
-            help="Calculation: (Current Cr) - (Cr 24h ago). \n\nPositive = Worsening (AKI velocity). \n0.0 = Stable."
-        )
-        
-        # Potassium
-        k = st.number_input(
-            "Potassium (mEq/L)", 
-            min_value=0.0, value=4.5, step=0.1,
-            help="Serum Potassium. \n\n⚠️ Critical > 6.0 mEq/L (Arrhythmia Risk). \nTarget range: 3.5 - 5.0."
-        )
-        
-        # Bicarbonate
-        bicarb = st.number_input(
-            "Bicarbonate (mEq/L)", 
-            min_value=0.0, value=24.0, step=1.0,
-            help="Serum HCO3. \n\nReference: 22 - 29 mEq/L. \nValues < 15 indicate severe metabolic acidosis."
-        )
-    
+        cr = st.number_input("Creatinine (mg/dL)", min_value=0.0, value=2.0, step=0.1, help="Reference: 0.7-1.3 mg/dL.")
+        delta_cr = st.number_input("Delta Cr (24h change)", value=0.0, step=0.1, help="Current Cr minus Cr 24h ago.")
+        k = st.number_input("Potassium (mEq/L)", min_value=0.0, value=4.5, step=0.1, help="⚠️ Critical > 6.0 mEq/L.")
+        bicarb = st.number_input("Bicarbonate (mEq/L)", min_value=0.0, value=24.0, step=1.0, help="Reference: 22-29 mEq/L.")
     with col2:
-        # BUN
-        bun = st.number_input(
-            "BUN (mg/dL)", 
-            min_value=0.0, value=40.0, step=1.0,
-            help="Blood Urea Nitrogen. \n\nValues > 80-100 mg/dL suggest Uremic Toxicity (bleeding risk, pericarditis)."
-        )
-        
-        # pH Level
-        ph = st.number_input(
-            "pH Level", 
-            min_value=6.8, max_value=7.6, value=7.4, step=0.01,
-            help="Arterial or Venous pH. \n\n⚠️ Critical < 7.15. \nAcidosis causes enzyme denaturation and myocardial depression."
-        )
-        
-        # Urine Output
-        uo = st.number_input(
-            "Urine Output 24h (ml)", 
-            min_value=0.0, value=1500.0, step=50.0,
-            help="Total volume in last 24 hours. \n\nOliguria: < 400ml. \nAnuria: < 100ml. \nPolyuria: > 3000ml."
-        )
+        bun = st.number_input("BUN (mg/dL)", min_value=0.0, value=40.0, step=1.0, help="Reference: 7-20 mg/dL.")
+        ph = st.number_input("pH Level", min_value=6.8, max_value=7.6, value=7.4, step=0.01, help="⚠️ Critical < 7.15.")
+        uo = st.number_input("Urine Output 24h (ml)", min_value=0.0, value=1500.0, step=50.0, help="Oliguria: < 400ml.")
         
     st.subheader("Clinical Signs")
-    
-    # Fluid Overload
-    fluid = st.selectbox(
-        "Fluid Overload Grade", 
-        [0, 1, 2, 3], 
-        help="0 = No Edema \n1 = Mild Pedal Edema \n2 = Pulmonary Crackles / Facial Edema \n3 = Anasarca / Respiratory Distress (Requires O2)"
-    )
-    
-    # Encephalopathy
-    enceph = st.checkbox(
-        "Uremic Encephalopathy Present?",
-        help="Check if patient has: \n- Confusion / Altered Mental Status \n- Asterixis (Flapping Tremor) \n- Seizures attributed to Uremia."
-    )
+    fluid = st.selectbox("Fluid Overload Grade", [0, 1, 2, 3], help="0=None, 3=Anasarca/Distress")
+    enceph = st.checkbox("Uremic Encephalopathy Present?", help="Check if confusion or asterixis is present.")
     
     st.divider()
-    st.markdown("### 💾 Data Options")
-    save_data = st.checkbox("Contribute this case to AI Training Database?", value=False)
-    
-    # Submission Button
+    save_data = st.checkbox("Contribute this case to AI Training Database?", value=True)
     submitted = st.form_submit_button("Run Analysis")
 
 # ---------------------------------------------------------
