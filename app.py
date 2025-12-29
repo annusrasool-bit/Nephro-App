@@ -14,7 +14,7 @@ import google.generativeai as genai
 # ---------------------------------------------------------
 st.set_page_config(page_title="Nephro-AI CDSS", page_icon="🏥", layout="centered")
 
-# Load the Brain
+# Load the Brain (Cached for Speed)
 @st.cache_resource
 def load_model_v3():
     try:
@@ -24,21 +24,25 @@ def load_model_v3():
 
 model = load_model_v3()
 
-# Database Function
+# Database Connection (Safe Mode)
 def add_to_database(data_row):
     try:
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-        creds_dict = dict(st.secrets["gcp_service_account"])
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        client = gspread.authorize(creds)
-        sheet = client.open("Nephro_DB").sheet1
-        sheet.append_row(data_row)
-        return True
+        # Check if secrets exist before connecting
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            client = gspread.authorize(creds)
+            sheet = client.open("Nephro_DB").sheet1
+            sheet.append_row(data_row)
+            return True
+        else:
+            return False
     except Exception as e:
         return False
 
 # ---------------------------------------------------------
-# 2. THE INTERFACE
+# 2. THE INTERFACE (With Clinical Tooltips)
 # ---------------------------------------------------------
 st.title("🏥 Nephro-AI Assistant")
 st.caption("Clinical Decision Support System with Explainability")
@@ -48,33 +52,80 @@ with st.form("patient_form"):
     
     col1, col2 = st.columns(2)
     with col1:
-        cr = st.number_input("Creatinine (mg/dL)", min_value=0.0, value=2.0, step=0.1)
+        # Creatinine
+        cr = st.number_input(
+            "Creatinine (mg/dL)", 
+            min_value=0.0, value=2.0, step=0.1,
+            help="Current serum creatinine. \n\nReference: 0.7 - 1.3 mg/dL. \nValues > 4.0 often indicate severe renal failure."
+        )
+        
+        # Delta Cr (24h)
         delta_cr = st.number_input(
             "Delta Cr (24h change)", 
-            value=0.0, 
-            step=0.1, 
-            help="Calculation: (Current Cr) - (Cr 24h ago). \n\nExample: If Current is 3.0 and Yesterday was 2.0, enter 1.0. \n\nPositive = Worsening, 0 = Stable."
+            value=0.0, step=0.1,
+            help="Calculation: (Current Cr) - (Cr 24h ago). \n\nPositive = Worsening (AKI velocity). \n0.0 = Stable."
         )
-        k = st.number_input("Potassium (mEq/L)", min_value=0.0, value=4.5, step=0.1)
-        bicarb = st.number_input("Bicarbonate (mEq/L)", min_value=0.0, value=24.0, step=1.0)
+        
+        # Potassium
+        k = st.number_input(
+            "Potassium (mEq/L)", 
+            min_value=0.0, value=4.5, step=0.1,
+            help="Serum Potassium. \n\n⚠️ Critical > 6.0 mEq/L (Arrhythmia Risk). \nTarget range: 3.5 - 5.0."
+        )
+        
+        # Bicarbonate
+        bicarb = st.number_input(
+            "Bicarbonate (mEq/L)", 
+            min_value=0.0, value=24.0, step=1.0,
+            help="Serum HCO3. \n\nReference: 22 - 29 mEq/L. \nValues < 15 indicate severe metabolic acidosis."
+        )
     
     with col2:
-        bun = st.number_input("BUN (mg/dL)", min_value=0.0, value=40.0, step=1.0)
-        ph = st.number_input("pH Level", min_value=6.8, max_value=7.6, value=7.4, step=0.01)
-        uo = st.number_input("Urine Output 24h (ml)", min_value=0.0, value=1500.0, step=50.0)
+        # BUN
+        bun = st.number_input(
+            "BUN (mg/dL)", 
+            min_value=0.0, value=40.0, step=1.0,
+            help="Blood Urea Nitrogen. \n\nValues > 80-100 mg/dL suggest Uremic Toxicity (bleeding risk, pericarditis)."
+        )
+        
+        # pH Level
+        ph = st.number_input(
+            "pH Level", 
+            min_value=6.8, max_value=7.6, value=7.4, step=0.01,
+            help="Arterial or Venous pH. \n\n⚠️ Critical < 7.15. \nAcidosis causes enzyme denaturation and myocardial depression."
+        )
+        
+        # Urine Output
+        uo = st.number_input(
+            "Urine Output 24h (ml)", 
+            min_value=0.0, value=1500.0, step=50.0,
+            help="Total volume in last 24 hours. \n\nOliguria: < 400ml. \nAnuria: < 100ml. \nPolyuria: > 3000ml."
+        )
         
     st.subheader("Clinical Signs")
-    fluid = st.selectbox("Fluid Overload Grade", [0, 1, 2, 3], help="0=None, 3=Anasarca")
-    enceph = st.checkbox("Uremic Encephalopathy Present?")
+    
+    # Fluid Overload
+    fluid = st.selectbox(
+        "Fluid Overload Grade", 
+        [0, 1, 2, 3], 
+        help="0 = No Edema \n1 = Mild Pedal Edema \n2 = Pulmonary Crackles / Facial Edema \n3 = Anasarca / Respiratory Distress (Requires O2)"
+    )
+    
+    # Encephalopathy
+    enceph = st.checkbox(
+        "Uremic Encephalopathy Present?",
+        help="Check if patient has: \n- Confusion / Altered Mental Status \n- Asterixis (Flapping Tremor) \n- Seizures attributed to Uremia."
+    )
     
     st.divider()
     st.markdown("### 💾 Data Options")
     save_data = st.checkbox("Contribute this case to AI Training Database?", value=False)
     
+    # Submission Button
     submitted = st.form_submit_button("Run Analysis")
 
 # ---------------------------------------------------------
-# 3. LOGIC & HYBRID DASHBOARD
+# 3. LOGIC ENGINE & DATA SAVING
 # ---------------------------------------------------------
 if submitted:
     if model:
@@ -86,6 +137,7 @@ if submitted:
             'urine_output_24h': [uo]
         })
         
+        # Align columns
         try:
             input_data = input_data[model.feature_names_in_]
         except:
@@ -95,26 +147,32 @@ if submitted:
         risk_prob_raw = model.predict_proba(input_data)[0][1]
         risk_prob = float(risk_prob_raw)
         
-        # --- SAVE TO MEMORY ---
+        # 3. SAVE TO MEMORY (Critical for Chatbot stability)
         st.session_state['risk_prob'] = risk_prob
         st.session_state['patient_context'] = {
             'cr': cr, 'bun': bun, 'k': k, 'ph': ph,
             'fluid': fluid, 'enceph': enceph, 'uo': uo,
-            'input_data': input_data
+            'input_data': input_data # Save dataframe for graphs
         }
         
+        # 4. Save to Cloud Database
         if save_data:
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            log_row = [str(timestamp), float(cr), float(delta_cr), float(k), float(bicarb), float(bun), float(ph), int(fluid), int(enceph), float(uo), round(risk_prob, 3)]
+            log_row = [
+                str(timestamp), float(cr), float(delta_cr), float(k), 
+                float(bicarb), float(bun), float(ph), int(fluid), 
+                int(enceph), float(uo), round(risk_prob, 3)
+            ]
             if add_to_database(log_row):
                 st.toast("✅ Saved for training!", icon="🧬")
 
     else:
-        st.error("⚠️ AI Brain (Model) not found.")
+        st.error("⚠️ AI Brain (Model) not found. Check GitHub files.")
 
 # ---------------------------------------------------------
-# 4. DISPLAY RESULTS (PERSISTENT)
+# 4. DASHBOARD & VISUALS
 # ---------------------------------------------------------
+# We check session_state so results persist during chat
 if 'risk_prob' in st.session_state:
     risk_prob = st.session_state['risk_prob']
     input_data = st.session_state['patient_context']['input_data']
@@ -122,11 +180,13 @@ if 'risk_prob' in st.session_state:
     st.divider()
     st.subheader("1. Clinical Assessment")
 
-    # --- VISUAL 1: MINIMALIST BULLET CHART ---
-    # Determine color
-    if risk_prob > 0.75: bar_color = "#FF4B4B" # Red
-    elif risk_prob > 0.40: bar_color = "#FFD700" # Yellow
-    else: bar_color = "#90EE90" # Green
+    # --- VISUAL 1: MINIMALIST BULLET TRACK ---
+    if risk_prob > 0.75:
+        bar_color = "#FF4B4B" # Red
+    elif risk_prob > 0.40:
+        bar_color = "#FFD700" # Yellow
+    else:
+        bar_color = "#90EE90" # Green
 
     fig_gauge = go.Figure(go.Indicator(
         mode = "number+gauge",
@@ -165,7 +225,7 @@ if 'risk_prob' in st.session_state:
         
     st.info(f"💡 **AI Logic:** Decision primarily driven by: {', '.join(reasoning_text)}")
 
-    # --- VISUAL 3: RISK BAR CHART (VISIBLE) ---
+    # --- VISUAL 3: RISK BAR CHART ---
     st.subheader("2. Risk Factor Breakdown")
     pos_factors = feature_importance[feature_importance['importance'] > 0].sort_values('importance')
     neg_factors = feature_importance[feature_importance['importance'] < 0].sort_values('importance')
@@ -176,7 +236,7 @@ if 'risk_prob' in st.session_state:
     fig_bar.update_layout(barmode='relative', height=300, margin=dict(l=0, r=0, t=20, b=20))
     st.plotly_chart(fig_bar, use_container_width=True)
 
-    # --- VISUAL 4: ADVANCED MATH (HIDDEN) ---
+    # --- VISUAL 4: HIDDEN WATERFALL (DEEP DIVE) ---
     with st.expander("🔬 View Raw Statistical Waterfall (Complex)", expanded=False):
         st.markdown("**Raw SHAP Trace:**")
         fig, ax = plt.subplots(figsize=(8, 5))
@@ -201,35 +261,63 @@ with st.expander("ℹ️ Evidence, Guidelines & Creator Info"):
     2.  **The IDEAL Study:** *Initiation of Dialysis Early and Late*. N Engl J Med 2010.
     
     ### 👨‍⚕️ About the Creator
-    **Dr. Annus Rasool ** *Nephrology Resident & AI Developer* <-- UPDATE THIS!
+    **Dr. [Annus Rasool]** *Nephrology Resident & AI Developer*
     *Disclaimer: This tool is a Clinical Decision Support System (CDSS) for educational purposes only.*
     """)
 
 # ---------------------------------------------------------
-# 6. AI CONSULTANT (DIAGNOSTIC VERSION)
+# 6. NEPHRO-GPT (AI CONSULTANT)
 # ---------------------------------------------------------
 st.divider()
 st.subheader("🤖 Nephro-GPT: Management Assistant")
 
-# Check if analysis has run
 if 'risk_prob' in st.session_state:
-    # DIAGNOSTIC CHECK
-    if "GOOGLE_API_KEY" in st.secrets:
-        st.success("✅ Success: The App detects your Google API Key.")
-        
-        # Now try to initialize the actual chat
-        try:
+    risk_p = st.session_state['risk_prob']
+    ctx = st.session_state['patient_context']
+    
+    # 1. Setup API (Safe Check)
+    try:
+        if "GOOGLE_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
             model_ai = genai.GenerativeModel('gemini-1.5-flash')
-            
-            # (Keep the rest of your chat history and input code here)
-            if "messages" not in st.session_state: st.session_state.messages = []
-            # ... [Paste the SBAR and Chat logic from the previous version here] ...
-            
-        except Exception as e:
-            st.error(f"❌ API Key found, but connection failed: {e}")
-    else:
-        st.error("❌ Error: The App DOES NOT see 'GOOGLE_API_KEY' in Secrets.")
-        st.write("Current top-level keys in Secrets:", list(st.secrets.keys()))
+        else:
+            st.warning("⚠️ Chatbot disabled: Add 'GOOGLE_API_KEY' to Streamlit Secrets.")
+            model_ai = None
+    except:
+        model_ai = None
+
+    # 2. Chat History
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # 3. SBAR Prompt (Auto-generated)
+    sbar_context = f"""
+    ACT AS A SENIOR NEPHROLOGIST.
+    PATIENT SBAR:
+    - Assessment: Cr {ctx['cr']}, K {ctx['k']}, pH {ctx['ph']}, Fluid {ctx['fluid']}, UO {ctx['uo']}
+    - Dialysis Risk: {risk_p:.1%}
+    - Task: Provide brief management steps based on KDIGO.
+    """
+
+    # 4. Show Chat
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # 5. Handle Input
+    if prompt := st.chat_input("Ask about management (e.g., 'Dose of Lasix?')..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        if model_ai:
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    try:
+                        response = model_ai.generate_content(sbar_context + "\n\nUser Question: " + prompt)
+                        st.markdown(response.text)
+                        st.session_state.messages.append({"role": "assistant", "content": response.text})
+                    except Exception as e:
+                        st.error(f"AI Error: {e}")
 else:
-    st.info("👆 Please run the analysis above to activate the AI Consultant.")
+    st.info("👆 **Please run the analysis above** to activate the AI Consultant.")
