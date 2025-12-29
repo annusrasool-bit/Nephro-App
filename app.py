@@ -172,7 +172,6 @@ if submitted:
 # ---------------------------------------------------------
 # 4. DASHBOARD & VISUALS
 # ---------------------------------------------------------
-# We check session_state so results persist during chat
 if 'risk_prob' in st.session_state:
     risk_prob = st.session_state['risk_prob']
     input_data = st.session_state['patient_context']['input_data']
@@ -236,7 +235,7 @@ if 'risk_prob' in st.session_state:
     fig_bar.update_layout(barmode='relative', height=300, margin=dict(l=0, r=0, t=20, b=20))
     st.plotly_chart(fig_bar, use_container_width=True)
 
-    # --- VISUAL 4: HIDDEN WATERFALL (DEEP DIVE) ---
+    # --- VISUAL 4: HIDDEN WATERFALL & VERBAL ANALYSIS ---
     with st.expander("🔬 View Raw Statistical Waterfall (Complex)", expanded=False):
         st.markdown("**Raw SHAP Trace:**")
         fig, ax = plt.subplots(figsize=(8, 5))
@@ -245,43 +244,43 @@ if 'risk_prob' in st.session_state:
                             data=input_data.iloc[0], feature_names=input_data.columns),
             show=False
         )
-            st.pyplot(fig)# ---------------------------------------------------------
-        # 5. DYNAMIC CLINICAL INTERPRETATION (VERBAL SUMMARY)
-        # ---------------------------------------------------------
+        st.pyplot(fig)
+        
+        # --- DYNAMIC VERBAL ANALYSIS (Included inside the expander) ---
         st.divider()
         st.markdown("### 🗣️ Verbalized Analysis")
         
-        # 1. Sort factors into "Hurting" (Positive) and "Helping" (Negative)
-        # We assume 'feature_importance' dataframe was created in the visual sections above. 
-        # If not, we recreate it briefly here to be safe:
-        feature_importance = pd.DataFrame({
-            'feature': input_data.columns,
-            'importance': shap_values[0],
-            'value': input_data.iloc[0].values
-        })
-        
+        # 1. Sort factors for text generation
         pos_drivers = feature_importance[feature_importance['importance'] > 0].sort_values('importance', ascending=False).head(2)
         neg_drivers = feature_importance[feature_importance['importance'] < 0].sort_values('importance', ascending=True).head(2)
         
-        # 2. Helper to format text (e.g., "Potassium (6.5)")
+        # 2. Text formatting helper
         def fmt(row): return f"**{row['feature']}** is {row['value']}"
         
-        # 3. Build the Sentence
+        # 3. Generate Logic
         if risk_prob < 0.50:
-            # SCENARIO: LOW RISK (Holding Off)
+            # LOW RISK SCENARIO
             if not pos_drivers.empty:
                 bad_factors = " and ".join([fmt(row) for _, row in pos_drivers.iterrows()])
                 opening = f"Although {bad_factors}, "
             else:
                 opening = "With no major risk factors present, "
             
-            good_factors = " and ".join([fmt(row) for _, row in neg_drivers.iterrows()])
+            if not neg_drivers.empty:
+                good_factors = " and ".join([fmt(row) for _, row in neg_drivers.iterrows()])
+            else:
+                good_factors = "general stability factors"
+
             summary = f"{opening}the AI recommends **holding off on dialysis**. This is primarily because {good_factors}, which provides a protective stability."
             st.success(f"🛡️ **Interpretation:** {summary}")
 
         else:
-            # SCENARIO: HIGH RISK (Initiate)
-            bad_factors = " and ".join([fmt(row) for _, row in pos_drivers.iterrows()])
+            # HIGH RISK SCENARIO
+            if not pos_drivers.empty:
+                bad_factors = " and ".join([fmt(row) for _, row in pos_drivers.iterrows()])
+            else:
+                bad_factors = "multiple critical values"
+
             if not neg_drivers.empty:
                 good_factors = " and ".join([fmt(row) for _, row in neg_drivers.iterrows()])
                 ending = f"Despite {good_factors}, the risk remains critical."
@@ -290,7 +289,6 @@ if 'risk_prob' in st.session_state:
                 
             summary = f"The AI recommends **urgent consideration for dialysis**. This is driven primarily because {bad_factors}. {ending}"
             st.error(f"🚨 **Interpretation:** {summary}")
-
            
 # ---------------------------------------------------------
 # 5. FOOTER: GUIDELINES & REFERENCES
