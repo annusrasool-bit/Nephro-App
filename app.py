@@ -49,7 +49,12 @@ with st.form("patient_form"):
     col1, col2 = st.columns(2)
     with col1:
         cr = st.number_input("Creatinine (mg/dL)", min_value=0.0, value=2.0, step=0.1)
-        delta_cr = st.number_input("Delta Cr (24h change)", value=0.0, step=0.1)
+        delta_cr = st.number_input(
+            "Delta Cr (24h change)", 
+            value=0.0, 
+            step=0.1, 
+            help="Calculation: (Current Cr) - (Cr 24h ago). \n\nExample: If Current is 3.0 and Yesterday was 2.0, enter 1.0. \n\nPositive = Worsening, 0 = Stable."
+        )
         k = st.number_input("Potassium (mEq/L)", min_value=0.0, value=4.5, step=0.1)
         bicarb = st.number_input("Bicarbonate (mEq/L)", min_value=0.0, value=24.0, step=1.0)
     
