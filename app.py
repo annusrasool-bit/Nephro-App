@@ -1,3 +1,11 @@
+# TEMPORARY DIAGNOSTIC CODE
+import joblib
+try:
+    temp_model = joblib.load('Nephro_Brain_Final.pkl')
+    st.write("🎯 Your Brain expects these columns in this order:")
+    st.write(temp_model.feature_names_in_)
+except Exception as e:
+    st.write(f"Could not read names: {e}")
 import streamlit as st
 import pandas as pd
 import joblib
