@@ -12,23 +12,33 @@ import google.generativeai as genai
 # ---------------------------------------------------------
 # 1. SETUP & CONFIGURATION
 # ---------------------------------------------------------
-st.set_page_config(page_title="Nephro-AI CDSS", page_icon="🏥", layout="centered")
+st.set_page_config(page_title="Nephro-AI: Kinetic Research", page_icon="📉", layout="centered")
 
-# Load the Brain (Cached for Speed)
+# Custom CSS for Medical/Research Look
+st.markdown("""
+    <style>
+    .stNumberInput > label {font-size: 105%; font-weight: bold; color: #304ffe;}
+    .stSelectbox > label {font-size: 105%; font-weight: bold; color: #304ffe;}
+    div[data-testid="stExpander"] details summary {font-weight: bold;}
+    </style>
+    """, unsafe_allow_html=True)
+
+# Load the Brain (Cached)
 @st.cache_resource
-def load_model_v3():
+def load_model():
     try:
         return joblib.load('Nephro_Brain_Final.pkl')
-    except:
+    except Exception as e:
+        st.error(f"⚠️ Model Loading Error: {e}")
         return None
 
-model = load_model_v3()
+model = load_model()
 
-# Database Connection (Safe Mode)
+# Database Connection (Research Grade)
 def add_to_database(data_row):
     try:
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-        # Check if secrets exist before connecting
+        # Check if secrets exist
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
@@ -42,279 +52,254 @@ def add_to_database(data_row):
         return False
 
 # ---------------------------------------------------------
-# 2. THE INTERFACE
+# 2. THE KINETIC INTERFACE
 # ---------------------------------------------------------
-st.title("🏥 Nephro-AI Assistant")
-st.caption("Clinical Decision Support System with SHAP Explainability")
+st.title("📉 Nephro-AI: Kinetic")
+st.caption("Validated Research Protocol | Kinetic-Hybrid Logic")
 
 with st.form("patient_form"):
     
-    # --- NEW: MR NUMBER SECTION ---
-    st.markdown("### 🆔 Patient Identification")
-    mr_number = st.text_input(
-        "MR Number / Patient ID", 
-        placeholder="Type Hospital ID here...",
-        help="Enter the unique Medical Record Number for this patient."
-    )
-    # ------------------------------
+    # --- A. RESEARCH IDENTIFIERS ---
+    col_id1, col_id2 = st.columns([1, 2])
+    with col_id1:
+        mr_number = st.text_input("MR Number", placeholder="e.g. 123-456")
+    with col_id2:
+        st.info("ℹ️ **Protocol:** Input previous 24h labs to calculate Kinetic Delta.")
 
     st.divider()
-    st.subheader("Patient Vitals & Labs")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        cr = st.number_input("Creatinine (mg/dL)", min_value=0.0, value=2.0, step=0.1, help="Reference: 0.7-1.3 mg/dL.")
-        delta_cr = st.number_input("Delta Cr (24h change)", value=0.0, step=0.1, help="Current Cr minus Cr 24h ago.")
-        k = st.number_input("Potassium (mEq/L)", min_value=0.0, value=4.5, step=0.1, help="⚠️ Critical > 6.0 mEq/L.")
-        bicarb = st.number_input("Bicarbonate (mEq/L)", min_value=0.0, value=24.0, step=1.0, help="Reference: 22-29 mEq/L.")
-    with col2:
-        bun = st.number_input("BUN (mg/dL)", min_value=0.0, value=40.0, step=1.0, help="Reference: 7-20 mg/dL.")
-        ph = st.number_input("pH Level", min_value=6.8, max_value=7.6, value=7.4, step=0.01, help="⚠️ Critical < 7.15.")
-        uo = st.number_input("Urine Output 24h (ml)", min_value=0.0, value=1500.0, step=50.0, help="Oliguria: < 400ml.")
+    # --- B. KINETIC RENAL FUNCTION (CORE LOGIC) ---
+    st.subheader("1. Kinetic Renal Function")
+    st.markdown("Use the Delta value to indicate trajectory (Positive = Worsening, Negative = Recovery).")
+    
+    k_col1, k_col2 = st.columns(2)
+    with k_col1:
+        cr = st.number_input("Current Creatinine (mg/dL)", min_value=0.0, value=2.5, step=0.1)
+    with k_col2:
+        # CRITICAL: This input drives the new research logic
+        delta_cr = st.number_input("⚠️ Delta Cr (24h Change)", 
+                                   value=0.0, step=0.1, 
+                                   help="Positive (+) = Injury. Negative (-) = Recovery. Zero = Stable CKD.")
+
+    # --- C. METABOLIC PROFILE ---
+    st.subheader("2. Metabolic & Fluid Profile")
+    
+    m_col1, m_col2 = st.columns(2)
+    with m_col1:
+        k = st.number_input("Potassium (mEq/L)", min_value=0.0, value=4.5, step=0.1, help="Critical cutoff: 6.0")
+        bicarb = st.number_input("Bicarbonate (mEq/L)", min_value=0.0, value=24.0, step=1.0)
+        fluid = st.selectbox("Fluid Overload Grade", [0, 1, 2, 3], help="0=None, 3=Anasarca")
+    with m_col2:
+        bun = st.number_input("BUN (mg/dL)", min_value=0.0, value=45.0, step=1.0)
+        ph = st.number_input("pH Level", min_value=6.8, max_value=7.6, value=7.35, step=0.01)
+        uo = st.number_input("Urine Output 24h (ml)", min_value=0.0, value=1200.0, step=50.0)
         
-    st.subheader("Clinical Signs")
-    fluid = st.selectbox("Fluid Overload Grade", [0, 1, 2, 3], help="0=None, 3=Anasarca/Distress")
-    enceph = st.checkbox("Uremic Encephalopathy Present?", help="Check if confusion or asterixis is present.")
+    enceph = st.checkbox("Uremic Encephalopathy / Pericarditis?", help="Clinical emergency indication.")
     
     st.divider()
-    save_data = st.checkbox("Contribute this case to AI Training Database?", value=True)
-    submitted = st.form_submit_button("Run Analysis")
+    save_data = st.checkbox("Log to Validation Database?", value=True)
+    submitted = st.form_submit_button("Run Kinetic Analysis")
 
 # ---------------------------------------------------------
-# 3. LOGIC ENGINE & DATA SAVING
+# 3. LOGIC ENGINE & PREDICTION
 # ---------------------------------------------------------
 if submitted:
     if model:
-        # 1. Prepare Data
+        # 1. Prepare Data (Strict Column Matching)
         input_data = pd.DataFrame({
-            'creatinine': [cr], 'delta_Cr_24h': [delta_cr], 'potassium': [k],
-            'bicarbonate': [bicarb], 'bun': [bun], 'ph_level': [ph],
-            'fluid_overload_grade': [fluid], 'uremic_encephalopathy': [1 if enceph else 0],
+            'creatinine': [cr], 
+            'delta_Cr_24h': [delta_cr], 
+            'potassium': [k],
+            'bicarbonate': [bicarb], 
+            'bun': [bun], 
+            'ph_level': [ph],
+            'fluid_overload_grade': [fluid], 
+            'uremic_encephalopathy': [1 if enceph else 0],
             'urine_output_24h': [uo]
         })
         
-        # 2. Predict Probability
+        # 2. Generate Prediction
         risk_prob = float(model.predict_proba(input_data)[0][1])
         st.session_state['risk_prob'] = risk_prob
-        
-        # --- FIXED: Added 'fluid' and 'enceph' to memory so Chatbot can read them ---
         st.session_state['patient_context'] = {
-            'cr': cr, 'k': k, 'ph': ph, 'uo': uo, 
-            'fluid': fluid, 'enceph': enceph, 'bun': bun, # <--- The Missing Keys!
+            'cr': cr, 'delta': delta_cr, 'k': k, 'ph': ph, 'uo': uo, 
+            'fluid': fluid, 'enceph': enceph, 'bun': bun,
             'input_data': input_data
         }
         
-        # 3. Save to Google Sheets
+        # 3. Log to Database
         if save_data:
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # LOGGING ORDER: MR, Time, Cr, Delta, K, Bicarb, BUN, pH, Fluid, Enceph, UO, Risk
             log_row = [
-                str(mr_number),  # Column 1: MR Number
-                str(timestamp),  # Column 2: Time
+                str(mr_number), str(timestamp), 
                 float(cr), float(delta_cr), float(k), 
                 float(bicarb), float(bun), float(ph), 
                 int(fluid), int(enceph), float(uo), 
                 round(risk_prob, 3)
             ]
-
             if add_to_database(log_row):
-                st.toast(f"✅ Patient {mr_number} saved!", icon="💾")
+                st.toast(f"✅ Patient {mr_number} logged successfully!", icon="💾")
             else:
-                st.error("❌ Database Error: Check Google Sheet Connection")
+                st.error("❌ Database Error: Check Google Sheet Connection.")
     else:
-        st.error("⚠️ AI Brain (Model) not found. Check GitHub files.")
+        st.error("🚨 Brain File Missing. Please ensure 'Nephro_Brain_Final.pkl' is uploaded.")
 
 # ---------------------------------------------------------
-# 4. DASHBOARD & VISUALS
+# 4. RESULTS DASHBOARD (Visuals + Interpretation)
 # ---------------------------------------------------------
 if 'risk_prob' in st.session_state:
     risk_prob = st.session_state['risk_prob']
     input_data = st.session_state['patient_context']['input_data']
     
     st.divider()
-    st.subheader("1. Clinical Assessment")
-
-    # --- VISUAL 1: MINIMALIST BULLET TRACK ---
+    
+    # --- VISUAL A: THE URGENCY GAUGE ---
+    # Logic: Green < 40% | Yellow 40-75% | Red > 75%
     if risk_prob > 0.75:
-        bar_color = "#FF4B4B" # Red
+        color = "#FF4B4B" # Red
+        status = "High Urgency"
     elif risk_prob > 0.40:
-        bar_color = "#FFD700" # Yellow
+        color = "#fabc02" # Yellow
+        status = "Monitor Closely"
     else:
-        bar_color = "#90EE90" # Green
+        color = "#00C851" # Green
+        status = "Conservative Management"
 
-    fig_gauge = go.Figure(go.Indicator(
-        mode = "number+gauge",
-        value = risk_prob * 100,
-        number = {'suffix': "%", 'font': {'size': 30, 'family': "Arial"}},
-        title = {'text': "Dialysis Urgency", 'font': {'size': 18, 'color': "gray"}},
-        domain = {'x': [0, 1], 'y': [0, 1]},
-        gauge = {
-            'shape': "bullet",
-            'axis': {'range': [None, 100], 'visible': False}, 
-            'bar': {'color': bar_color, 'thickness': 0.25},   
-            'bgcolor': "#E8E8E8",                             
-            'steps': [{'range': [0, 100], 'color': "#f0f2f6"}],
-            'threshold': {'line': {'color': "gray", 'width': 2}, 'thickness': 0.75, 'value': 75}
-        }
-    ))
-    fig_gauge.update_layout(height=120, margin=dict(l=20, r=20, t=30, b=20))
-    st.plotly_chart(fig_gauge, use_container_width=True)
-
-    # --- VISUAL 2: CONSULTANT NOTE ---
-    explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(input_data)
+    col_g1, col_g2 = st.columns([1, 2])
+    with col_g1:
+        # Custom HTML Number Display
+        st.markdown(f"<div style='text-align: center; color: {color};'>"
+                    f"<span style='font-size: 50px; font-weight: bold;'>{risk_prob:.1%}</span>"
+                    f"<br><span>{status}</span></div>", unsafe_allow_html=True)
     
-    feature_importance = pd.DataFrame({
-        'feature': input_data.columns,
-        'importance': shap_values[0],
-        'value': input_data.iloc[0].values
-    })
-    feature_importance['abs_importance'] = feature_importance['importance'].abs()
-    top_factors = feature_importance.sort_values('abs_importance', ascending=False).head(3)
-    
-    reasoning_text = []
-    for index, row in top_factors.iterrows():
-        direction = "increased" if row['importance'] > 0 else "decreased"
-        reasoning_text.append(f"**{row['feature']} ({row['value']})** {direction} risk")
+    with col_g2:
+        # --- VISUAL B: KINETIC INTERPRETATION (Text Analysis) ---
+        st.subheader("💡 Kinetic Analysis")
         
-    st.info(f"💡 **AI Logic:** Decision primarily driven by: {', '.join(reasoning_text)}")
+        # Calculate SHAP for Explanation
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(input_data)
+        
+        # Extract Top 3 Drivers
+        feature_names = input_data.columns
+        importance = pd.DataFrame({
+            'feature': feature_names,
+            'shap_value': shap_values[0],
+            'actual_value': input_data.iloc[0].values
+        })
+        importance['abs_shap'] = importance['shap_value'].abs()
+        top_drivers = importance.sort_values('abs_shap', ascending=False).head(3)
+        
+        # Loop through drivers to create sentences
+        for index, row in top_drivers.iterrows():
+            feat = row['feature']
+            val = row['actual_value']
+            shap_val = row['shap_value']
+            
+            # --- CUSTOM LOGIC FOR DELTA (The Research Requirement) ---
+            if feat == 'delta_Cr_24h':
+                if val < 0:
+                    st.success(f"📉 **Recovery Trend:** Negative Delta ({val}) is a strong protective factor.")
+                elif val == 0:
+                    st.info(f"⚖️ **Stable Kinetic:** Delta is zero, suggesting CKD stability rather than acute injury.")
+                else:
+                    st.warning(f"📈 **Acute Deterioration:** Positive Delta (+{val}) indicates active injury.")
+            
+            # --- CUSTOM LOGIC FOR URINE ---
+            elif feat == 'urine_output_24h':
+                if val < 500:
+                    st.warning(f"💧 **Oliguria:** Low output ({val}ml) is a major risk driver.")
+                else:
+                    st.success(f"🌊 **Good Output:** Urine volume ({val}ml) is preserving renal function.")
+            
+            # --- GENERIC LOGIC ---
+            else:
+                impact = "increasing risk" if shap_val > 0 else "lowering risk"
+                icon = "⚠️" if shap_val > 0 else "🛡️"
+                st.write(f"{icon} **{feat}** ({val}) is {impact}.")
 
-    # --- VISUAL 3: RISK BAR CHART ---
-    st.subheader("2. Risk Factor Breakdown")
-    pos_factors = feature_importance[feature_importance['importance'] > 0].sort_values('importance')
-    neg_factors = feature_importance[feature_importance['importance'] < 0].sort_values('importance')
+    # --- VISUAL C: RISK FACTOR BAR CHART (Restored) ---
+    st.divider()
+    st.subheader("📊 Risk Factor Breakdown")
+    
+    # Split into Positive (Red) and Negative (Green) impacts
+    pos_factors = importance[importance['shap_value'] > 0].sort_values('shap_value')
+    neg_factors = importance[importance['shap_value'] < 0].sort_values('shap_value')
     
     fig_bar = go.Figure()
-    fig_bar.add_trace(go.Bar(y=pos_factors['feature'], x=pos_factors['importance'], orientation='h', name='Risk', marker_color='#FF4B4B'))
-    fig_bar.add_trace(go.Bar(y=neg_factors['feature'], x=neg_factors['importance'], orientation='h', name='Protective', marker_color='#90EE90'))
+    fig_bar.add_trace(go.Bar(y=pos_factors['feature'], x=pos_factors['shap_value'], 
+                             orientation='h', name='Increases Risk', marker_color='#FF4B4B'))
+    fig_bar.add_trace(go.Bar(y=neg_factors['feature'], x=neg_factors['shap_value'], 
+                             orientation='h', name='Decreases Risk', marker_color='#00C851'))
+    
     fig_bar.update_layout(barmode='relative', height=300, margin=dict(l=0, r=0, t=20, b=20))
     st.plotly_chart(fig_bar, use_container_width=True)
 
-    # --- VISUAL 4: HIDDEN WATERFALL & VERBAL ANALYSIS ---
-    with st.expander("🔬 View Raw Statistical Waterfall (Complex)", expanded=False):
-        st.markdown("**Raw SHAP Trace:**")
+    # --- VISUAL D: WATERFALL PLOT (Scientific Proof) ---
+    with st.expander("🔬 View Detailed Statistical Waterfall (For Publication)"):
         fig, ax = plt.subplots(figsize=(8, 5))
         shap.plots.waterfall(
             shap.Explanation(values=shap_values[0], base_values=explainer.expected_value, 
-                            data=input_data.iloc[0], feature_names=input_data.columns),
+                             data=input_data.iloc[0], feature_names=input_data.columns),
             show=False
         )
         st.pyplot(fig)
-        
-        # --- DYNAMIC VERBAL ANALYSIS (Included inside the expander) ---
-        st.divider()
-        st.markdown("### 🗣️ Verbalized Analysis")
-        
-        # 1. Sort factors for text generation
-        pos_drivers = feature_importance[feature_importance['importance'] > 0].sort_values('importance', ascending=False).head(2)
-        neg_drivers = feature_importance[feature_importance['importance'] < 0].sort_values('importance', ascending=True).head(2)
-        
-        # 2. Text formatting helper
-        def fmt(row): return f"**{row['feature']}** is {row['value']}"
-        
-        # 3. Generate Logic
-        if risk_prob < 0.50:
-            # LOW RISK SCENARIO
-            if not pos_drivers.empty:
-                bad_factors = " and ".join([fmt(row) for _, row in pos_drivers.iterrows()])
-                opening = f"Although {bad_factors}, "
-            else:
-                opening = "With no major risk factors present, "
-            
-            if not neg_drivers.empty:
-                good_factors = " and ".join([fmt(row) for _, row in neg_drivers.iterrows()])
-            else:
-                good_factors = "general stability factors"
 
-            summary = f"{opening}the AI recommends **holding off on dialysis**. This is primarily because {good_factors}, which provides a protective stability."
-            st.success(f"🛡️ **Interpretation:** {summary}")
-
-        else:
-            # HIGH RISK SCENARIO
-            if not pos_drivers.empty:
-                bad_factors = " and ".join([fmt(row) for _, row in pos_drivers.iterrows()])
-            else:
-                bad_factors = "multiple critical values"
-
-            if not neg_drivers.empty:
-                good_factors = " and ".join([fmt(row) for _, row in neg_drivers.iterrows()])
-                ending = f"Despite {good_factors}, the risk remains critical."
-            else:
-                ending = "There are no significant protective factors buffering this risk."
-                
-            summary = f"The AI recommends **urgent consideration for dialysis**. This is driven primarily because {bad_factors}. {ending}"
-            st.error(f"🚨 **Interpretation:** {summary}")
-           
 # ---------------------------------------------------------
-# 5. FOOTER: GUIDELINES & REFERENCES
+# 5. NEPHRO-GPT (CHATBOT)
 # ---------------------------------------------------------
 st.divider()
-with st.expander("ℹ️ Evidence, Guidelines & Creator Info"):
-    st.markdown("""
-    ### 🧠 How this AI Works
-    This tool utilizes a **Hybrid Clinical-AI Model** trained on 3,000 clinically validated scenarios based on **KDIGO Emergency Criteria**.
-    
-    ### 📚 Key References
-    1.  **KDIGO 2012:** *Clinical Practice Guideline for Acute Kidney Injury*.
-    2.  **The IDEAL Study:** *Initiation of Dialysis Early and Late*. N Engl J Med 2010.
-    
-    ### 👨‍⚕️ About the Creator
-    **Dr. [Annus Rasool]** *Nephrology Resident & AI Developer*
-    *Disclaimer: This tool is a Clinical Decision Support System (CDSS) for educational purposes only.*
-    """)
-
-# ---------------------------------------------------------
-# 6. NEPHRO-GPT (AI CONSULTANT)
-# ---------------------------------------------------------
-st.divider()
-st.subheader("🤖 Nephro-GPT: Management Assistant")
+st.subheader("🤖 Nephro-GPT Consultant")
 
 if 'risk_prob' in st.session_state:
-    risk_p = st.session_state['risk_prob']
-    ctx = st.session_state['patient_context']
-    
-    # 1. Setup API (Safe Check)
     try:
         if "GOOGLE_API_KEY" in st.secrets:
             genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
             model_ai = genai.GenerativeModel('gemini-1.5-flash')
-        else:
-            st.warning("⚠️ Chatbot disabled: Add 'GOOGLE_API_KEY' to Streamlit Secrets.")
-            model_ai = None
-    except:
-        model_ai = None
+            
+            if "messages" not in st.session_state:
+                st.session_state.messages = []
 
-    # 2. Chat History
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+            # Display Chat History
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
 
-    # 3. SBAR Prompt (Auto-generated)
-    sbar_context = f"""
-    ACT AS A SENIOR NEPHROLOGIST.
-    PATIENT SBAR:
-    - Assessment: Cr {ctx['cr']}, K {ctx['k']}, pH {ctx['ph']}, Fluid {ctx['fluid']}, UO {ctx['uo']}
-    - Dialysis Risk: {risk_p:.1%}
-    - Task: Provide brief management steps based on KDIGO.
-    """
-
-    # 4. Show Chat
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-    # 5. Handle Input
-    if prompt := st.chat_input("Ask about management (e.g., 'Dose of Lasix?')..."):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        if model_ai:
-            with st.chat_message("assistant"):
-                with st.spinner("Thinking..."):
-                    try:
-                        response = model_ai.generate_content(sbar_context + "\n\nUser Question: " + prompt)
+            # Chat Input
+            if prompt := st.chat_input("Ask about management (e.g., 'Calcium Gluconate dose?')..."):
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+                
+                # Context-Aware System Prompt
+                ctx = st.session_state['patient_context']
+                system_prompt = f"""
+                ACT AS A SENIOR NEPHROLOGIST.
+                Patient Data: Cr {ctx['cr']}, Delta {ctx['delta']}, K {ctx['k']}, pH {ctx['ph']}, UO {ctx['uo']}.
+                AI Risk Score: {st.session_state['risk_prob']:.1%}.
+                User Question: {prompt}
+                Keep answer clinical, brief, and guideline-based.
+                """
+                
+                with st.chat_message("assistant"):
+                    with st.spinner("Consulting guidelines..."):
+                        response = model_ai.generate_content(system_prompt)
                         st.markdown(response.text)
                         st.session_state.messages.append({"role": "assistant", "content": response.text})
-                    except Exception as e:
-                        st.error(f"AI Error: {e}")
-else:
-    st.info("👆 **Please run the analysis above** to activate the AI Consultant.")
+        else:
+            st.info("ℹ️ Chatbot requires API Key in Streamlit Secrets.")
+    except Exception as e:
+        st.error(f"Chatbot Error: {e}")
+
+# ---------------------------------------------------------
+# 6. FOOTER
+# ---------------------------------------------------------
+st.divider()
+st.markdown("""
+<div style='text-align: center; color: gray; font-size: 0.8em;'>
+    <b>Nephro-AI Kinetic Research Tool</b><br>
+    Developed for Validation Study | Based on KDIGO 2012 & Kinetic Modeling<br>
+    <i>Not for unverified clinical use.</i>
+</div>
+""", unsafe_allow_html=True)
